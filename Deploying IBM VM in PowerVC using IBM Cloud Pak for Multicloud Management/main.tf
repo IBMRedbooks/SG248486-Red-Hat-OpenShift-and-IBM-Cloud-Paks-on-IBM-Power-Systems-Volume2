@@ -1,34 +1,35 @@
 provider "openstack" {
   insecure = true
-  version  = "~> 0.2"
 }
+
 #Create an IBM i partition
-resource "openstack_compute_instance_v2" "PowerVC-LPAR" {
-  name         = "${var.ibm_stack_name}"  
-  image_name   = "${var.openstack_image_name}"
-  flavor_name  = "${var.openstack_flavor_name}"   
-  
+resource "openstack_compute_instance_v2" "PowerVC-VM" {
+  name        = var.ibm_stack_name
+  image_name  = var.openstack_image_name
+  flavor_name = var.openstack_flavor_name
+
   network {
-    name = "${var.openstack_network_name}"
-   }
- }
- #Variables for deployment
+    name = var.openstack_network_name
+  	}
+}
+
+#Variables for deployment
 variable "openstack_image_name" {
-  description = "The Name of the image to be used for deployment."
+  description = "Please insert the name of the image of PowerVC."
 }
 
 variable "openstack_flavor_name" {
-  description = "The Name of the flavor to be used for deployment."
+  description = "Please insert the Compute Template or flavor to deploy the virtual machine."
 }
 
 variable "openstack_network_name" {
-  description = "The Name of the network to be used for deployment."
+  description = "Please insert the name of the network."
 }
 
 variable "ibm_stack_name" {
-  description = "Name of the new LPAR to deploy"
+  description = "Please insert a new name for the Virtual Machine"
 }
 
-output "New IP for LPAR" {
-  value = "${openstack_compute_instance_v2.PowerVC-LPAR.*.network.0.fixed_ip_v4}"
- }
+output "VM_IP_Address" {
+  value = openstack_compute_instance_v2.PowerVC-VM.*.network.0.fixed_ip_v4
+}
