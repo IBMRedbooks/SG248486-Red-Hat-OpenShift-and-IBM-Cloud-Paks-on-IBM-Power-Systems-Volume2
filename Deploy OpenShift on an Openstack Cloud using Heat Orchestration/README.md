@@ -1,15 +1,15 @@
-##Heat template to deploy openshift cluster in openstack
+## Heat template to deploy openshift cluster in openstack
 
 This heat template will deploy an openshift cluster of 3 master nodes and 3 to 6 workers.
 
-###Prereqs
+### Prereqs
 
 Access to an existing Openstack project
 A Redhat subscription pull secret which is required for deploy openshift
 The network id of the Openstack project network on which to allocate new subnets
 The public key of an openstack keypair that will be used to access the instances.
 
-###Usage
+### Usage
 
 The Heat template consists of two files and environemnt file and a deployment template
 
