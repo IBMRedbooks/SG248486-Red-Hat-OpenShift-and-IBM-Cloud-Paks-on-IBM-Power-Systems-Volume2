@@ -29,7 +29,8 @@ internal_network_id: - This is the UUID of the internal project network that is 
 pullSecret: - A Redhat subscription pull secret which is required for deploy openshift
 key_name: - The Openstack key-pair name to be used to deploy the bastion.
 public_key: - The public key of an openstack keypair used to deploy the Bastion this will be injected into ocp nodes via the iginition file so that SSH can be used to access nodes. This can be obtained by viewing the Key Pair in the Horizon UI. Project -> Compute -> Key
-Creating the Cluster
+
+### Creating the Cluster
 
 To deploy the cluster you can use the Horizon menu
 
@@ -57,7 +58,8 @@ INFO Install complete!
 INFO To access the cluster as the system:admin user when using 'oc', run 'export KUBECONFIG=/var/www/html/ignition/baz43test/auth/kubeconfig' 
 INFO Access the OpenShift web-console here: https://console-openshift-console.apps.baz43test.hur.hdclab.intranet.ibm.com 
 INFO Login to the console with user: kubeadmin, password: <cluster password>
-Post Deployment
+  
+### Post Deployment
 
 The bastion node floating ip address needs to be added to the list of DNS servers on any clients that need to access the cluster
 Openshift operator commands can be issued to the cluster from the Bastion infrastructure node.
@@ -67,11 +69,12 @@ Issue the command to setup the KUBECONFIG environment variable as stated in the 
 You can now issue oc commands to the openshift cluster. eg oc status or oc get nodes
 If you require persistent volumes an NFS server has been installed on the Bastion and the entire /export directory has been shared out. To setup NFS volumes for ocp login to the Bastion sudo to root and issue helpernodecheck nfs-info which gives instructions on how this can be performed.
 To access the openshift nodes directly you can add a floating ip to the master/worker node and login directly from your client using your openstack ssh key but you should logn using userid core. Alternatively you can add your private key on the Bastion node.
-Removing/Destroying the Cluster
+
+### Removing/Destroying the Cluster
 
 To delete the cluster use the Delete Stacks from Project -> Orchestration -> Stacks , do not delete the instances individually as this will not cleanup all the deployed resources.
 
-Overview of heat template
+### Overview of heat template
 
 Creates a new openstack subnet on the project network that was identified in the template for ocp cluster deployment
 Creates a virtual router for the network
