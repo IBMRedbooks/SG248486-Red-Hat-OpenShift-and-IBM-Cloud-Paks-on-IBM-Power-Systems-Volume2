@@ -1,0 +1,14 @@
+parameters:
+  num_workers: - defaults to 3
+  cluster_name: - the name to call the cluster
+  openshift_version: defaults to 4.3.0. A valid directory version in https://mirror.openshift.com/pub/openshift-v4/clients/ocp/
+  worker_flavor: - defaults to m1.large
+  master_flavor: - defaults to m1.larg
+  internal_network_cidr: - the cidr definition for the internal subnet to be used eg 10.20.0.0/24
+  infrastructure_node_ip: - the ip address used for the Bastion node this must be in the subnet above. eg 10.20.10.0
+  internal_network_id: - This is the UUID of the internal project network that is used. It must be the ID not the name
+  pullSecret: '' - A Redhat subscription pull secret which is required for deploy openshift. Must be enclosed in single quotes
+  key_name: - The openstack keypair name that will be used to deploy the Bastion node
+  public_key: '' - The public key of an openstack keypair used to deploy the instances. Must be enclosed in single quotes
+  availability_zone: - defaults to nova. To deploy to power use PowerKVM. To deploy to an alternate zone use your zone name. 
+  

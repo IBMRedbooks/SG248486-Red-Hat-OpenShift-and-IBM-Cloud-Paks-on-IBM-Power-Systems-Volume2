@@ -1,0 +1,802 @@
+heat_template_version: 2017-09-01
+
+description: OCP cluster
+
+parameters:
+  num_workers:
+    type: number
+    description: Number of workers
+    default: 3
+  coreos_image:
+    type: string
+    default: "rhcos-4.3.18-ppc64le-20200708"
+    description: Base image for Redhat CoreOS image to be used for the Openshift cluster
+  cluster_name:
+    type: string
+    description: clustername
+    default: "ocp"
+  openshift_version:
+    type: string
+    description: Version of Openshift V4 to install eg 4.2.2 , 4.3.0
+    default: "4.3.24"
+  worker_flavor:
+    type: string
+    description: Flavor for work nodes
+    default: "m1.large"
+  master_flavor:
+    type: string
+    description: Flavor for master nodes
+    default: "m1.large"
+  centos_image:
+    type: string
+    default: "a18a8157-411d-476f-b703-a01152a2d135"
+    description: Base image UUID for Centos bastion image
+  key_name:
+    type: string
+    description: SSH Openstack keypair name to use
+  public_key:
+    type: string
+    description: SSH Openstack public key contents allows login to ocp nodes with keypair.
+  availability_zone:
+    type: string
+    description: The availability zone name to deploy to
+    default: PowerKVM
+  internal_network_cidr:
+    type: string
+    description: The CIDR of the internal network
+  internal_gw_name:
+    type: string
+    description: The name of the internal network router
+    default: ocp_router
+  infrastructure_node_ip:
+    type: string
+    description: Address of infrastructure node on subnet
+  dns_secondary:
+    type: string
+    description: Secondary DNS for internal network
+    default: 9.20.136.11
+  dns_additional:
+    type: string
+    description: Secondary DNS for internal network
+    default: 9.20.136.25
+  public_floatingip_network:
+    type: string
+    description: The public network which is the Openstack Floating IPs network
+    default: HDC_floating_ips
+  internal_network_id:
+    type: string
+    description: Ths is the UUID of the internal project network that is used. It must be the ID not the name
+  base_domain:
+    type: string
+    description: This is the base domain name used in the Openstack cloud
+    default: hur.hdclab.intranet.ibm.com
+  pullSecret:
+    type: string
+    description: A Redhat subscription pull secret which is required for deploy openshift
+
+conditions:
+
+   workers_num4:
+    yaql:
+      expression: $.data.workers >= 4
+      data:
+        workers:
+          get_param: num_workers
+   workers_num5:
+    yaql:
+      expression: $.data.workers >= 5
+      data:
+        workers:
+          get_param: num_workers
+   workers_num6:
+    yaql:
+      expression: $.data.workers >= 6
+      data:
+        workers:
+          get_param: num_workers
+
+resources:
+
+   internal_net:
+    type: OS::Neutron::Net
+    external_id: { get_param: internal_network_id }
+
+   internal_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: internal_net }
+      cidr: { get_param: internal_network_cidr }
+      name:
+         list_join: ['-', [{get_param: cluster_name} ,'subnet', {get_param: internal_network_cidr}]]
+      dns_nameservers: [ { get_param: infrastructure_node_ip }, { get_param: dns_secondary }, { get_param: dns_additional } ]
+
+   internal_router:
+    type: OS::Neutron::Router
+    properties:
+      name: { get_param: internal_gw_name }
+      external_gateway_info: { network: { get_param: public_floatingip_network } }
+
+#   internal_router_extgw:
+#    type: OS::Neutron::RouterGateway
+#    properties:
+#      network_id: { get_param: public_network_uuid }
+#      router_id: { get_resource: internal_router }
+
+   internal_router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: internal_router }
+      subnet_id: { get_resource: internal_subnet }
+
+   ocp_secgroup:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: {get_param: cluster_name}
+      description: Allows ports for OCP usage
+      rules: [ {"direction": egress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1,
+                "port_range_max": 65535,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": egress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1,
+                "port_range_max": 65535,
+                "ethertype": IPv4,
+                "protocol": udp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 22,
+                "port_range_max": 22,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 8443,
+                "port_range_max": 8443,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 443,
+                "port_range_max": 443,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 80,
+                "port_range_max": 80,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 53,
+                "port_range_max": 53,
+                "ethertype": IPv4,
+                "protocol": udp},
+               {"direction": ingress,
+                "remote_ip_prefix": { get_param: internal_network_cidr },
+                "port_range_min": 5353,
+                "port_range_max": 5353,
+                "ethertype": IPv4,
+                "protocol": udp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 4789,
+                "port_range_max": 4789,
+                "ethertype": IPv4,
+                "protocol": udp},
+               {"direction": ingress,
+                "remote_ip_prefix": { get_param: internal_network_cidr },
+                "port_range_min": 8080,
+                "port_range_max": 8080,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 2379,
+                "port_range_max": 2380,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 4001,
+                "port_range_max": 4001,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 6443,
+                "port_range_max": 6443,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 22623,
+                "port_range_max": 22623,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 2049,
+                "port_range_max": 2049,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 111,
+                "port_range_max": 111,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1039,
+                "port_range_max": 1039,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1047,
+                "port_range_max": 1048,
+                "ethertype": IPv4,
+                "protocol": tcp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 2049,
+                "port_range_max": 2049,
+                "ethertype": IPv4,
+                "protocol": udp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 111,
+                "port_range_max": 111,
+                "ethertype": IPv4,
+                "protocol": udp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1039,
+                "port_range_max": 1039,
+                "ethertype": IPv4,
+                "protocol": udp},
+              {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 1047,
+                "port_range_max": 1048,
+                "ethertype": IPv4,
+                "protocol": udp},
+              {"direction": ingress,
+                "remote_ip_prefix": { get_param: internal_network_cidr },
+                "port_range_min": 1,
+                "port_range_max": 65535,
+                "ethertype": IPv4,
+                "protocol": tcp},
+               {"direction": ingress,
+                "remote_ip_prefix": 0.0.0.0/0,
+                "port_range_min": 0,
+                "port_range_max": 255,
+                "ethertype": IPv4,
+                "protocol": icmp}
+               ]
+
+
+   ocp_infra_port:
+    type: OS::Neutron::Port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'infra']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - { subnet_id: { get_resource: internal_subnet } , ip_address: { get_param: infrastructure_node_ip }  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   infra_floating_ip:
+    type: OS::Neutron::FloatingIP
+    depends_on: ocp_infra_port
+    properties:
+#      floating_network: { get_param: public_network_uuid }
+      floating_network: { get_param: public_floatingip_network }
+
+   floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    depends_on: ocp_infra_port
+    properties:
+      floatingip_id: { get_resource: infra_floating_ip }
+      port_id: { get_resource: ocp_infra_port }
+
+   ocp_bootstrap_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'bootstrap']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_master0_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master0']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_master1_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master1']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_master2_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master2']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker0_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker0']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker1_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker1']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker2_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker2']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker3_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    condition: workers_num4
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker3']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker4_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    condition: workers_num5
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker4']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   ocp_worker5_port:
+    type: OS::Neutron::Port
+    depends_on: ocp_infra_port
+    condition: workers_num6
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker5']]
+      network_id: { get_resource: internal_net }
+      fixed_ips:
+        - subnet_id: { get_resource: internal_subnet  }
+      security_groups:
+        - { get_resource: ocp_secgroup }
+
+   infranode:
+    type: OS::Nova::Server
+    depends_on: ocp_infra_port
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'infra']]
+      image: { get_param: centos_image }
+      flavor: "m1.large"
+      key_name: { get_param: key_name }
+      availability_zone: { get_param: availability_zone }
+      networks:
+      - port: { get_resource: ocp_infra_port }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+                $domain_name: {get_param: base_domain}
+                $clusterid: {get_param: cluster_name}
+                $opn_ver: {get_param: openshift_version}
+                $infra_ip: {get_attr: [ocp_infra_port, fixed_ips, 0, ip_address]}
+                $infra_floating_ip: {get_attr: [infra_floating_ip, floating_ip_address]}
+                $ipbootstrap: {get_attr: [ocp_bootstrap_port, fixed_ips, 0, ip_address]}
+                $ipmaster0: {get_attr: [ocp_master0_port, fixed_ips, 0, ip_address]}
+                $ipmaster1: {get_attr: [ocp_master1_port, fixed_ips, 0, ip_address]}
+                $ipmaster2: {get_attr: [ocp_master2_port, fixed_ips, 0, ip_address]}
+                $ipworker0: {get_attr: [ocp_worker0_port, fixed_ips, 0, ip_address]}
+                $ipworker1: {get_attr: [ocp_worker1_port, fixed_ips, 0, ip_address]}
+                $ipworker2: {get_attr: [ocp_worker2_port, fixed_ips, 0, ip_address]}
+                $ipworker3: {if: ["workers_num4", get_attr: [ocp_worker3_port, fixed_ips, 0, ip_address], ""]}
+                $ipworker4: {if: ["workers_num5", get_attr: [ocp_worker4_port, fixed_ips, 0, ip_address], ""]}
+                $ipworker5: {if: ["workers_num6", get_attr: [ocp_worker5_port, fixed_ips, 0, ip_address], ""]}
+                $numworkers: {get_param: num_workers}
+                $public_ssh_key: {get_param: public_key}
+                $secret: {get_param: pullSecret}
+                wc_notify: { get_attr: [wait_handle, curl_cli] }
+          template: |
+                #!/bin/bash
+                ip_worker0=$ipworker0
+                ip_worker1=$ipworker1
+                ip_worker2=$ipworker2
+                ip_worker3=$ipworker3
+                ip_worker4=$ipworker4
+                ip_worker5=$ipworker5
+                echo "Running boot script"
+                cd /root
+                yum remove -y epel-release
+                yum install -y epel-release
+                yum install -y ansible
+                cd /root
+                git clone -b devel https://github.com/RedHatOfficial/ocp4-helpernode.git
+                cd /root/ocp4-helpernode
+                echo -e 'staticips: true' > vars.yaml
+                echo -e 'ssh_gen_key: false' >> vars.yaml
+                echo -e 'install_filetranspiler: false' >> vars.yaml
+                echo -e 'force_ocp_download: true' >> vars.yaml
+                echo -e 'ppc64le: true' >> vars.yaml
+                echo -e 'helm_source: "https://get.helm.sh/helm-v3.2.4-linux-ppc64le.tar.gz"' >> vars.yaml
+                echo -e 'helper: \n name: "$clusterid-infra" \n ipaddr: "$infra_floating_ip" \n networkifacename: "eth0"' >> vars.yaml
+                echo -e 'dns: \n domain: "$domain_name" \n clusterid: "$clusterid" \n forwarder1: "9.20.136.25" \n forwarder2: "9.20.136.11"' >> vars.yaml
+                echo -e 'bootstrap: \n  name: "$clusterid-bootstrap" \n  ipaddr: "$ipbootstrap"' >> vars.yaml
+                echo -e 'masters: \n  - name: "$clusterid-master0" \n    ipaddr: "$ipmaster0"' >> vars.yaml
+                echo -e '  - name: "$clusterid-master1" \n    ipaddr: "$ipmaster1"' >> vars.yaml
+                echo -e '  - name: "$clusterid-master2" \n    ipaddr: "$ipmaster2"' >> vars.yaml
+                echo -e 'workers:' >> vars.yaml
+                ocpworker=0
+                while [ $ocpworker -lt $numworkers ];do
+                  workeripvar="ip_worker"${ocpworker}
+                  workerip=${!workeripvar}
+                  echo $workerip >> debug.info
+                  echo "should be value " $workerip >> debug.info
+                  echo $ipworker0 >> debug.info
+                  echo -e '  - name: "'$clusterid'-worker'$ocpworker'"' >> vars.yaml
+                  echo -e '    ipaddr: "'$workerip'"' >> vars.yaml
+                  let ocpworker=$ocpworker+1
+                done
+                echo -e 'ppc64le: true' >> vars.yaml
+                echo 'ocp_client: "https://mirror.openshift.com/pub/openshift-v4/ppc64le/clients/ocp/$opn_ver/openshift-client-linux-$opn_ver.tar.gz"' >> vars.yaml
+                echo 'ocp_installer: "https://mirror.openshift.com/pub/openshift-v4/ppc64le/clients/ocp/$opn_ver/openshift-install-linux-$opn_ver.tar.gz"' >> vars.yaml
+                echo -e 'ocp_bios: "file:///dev/null"' >> vars.yaml
+                echo -e 'ocp_initramfs: "file:///dev/null"' >> vars.yaml
+                echo -e 'ocp_install_kernel: "file:///dev/null"' >> vars.yaml
+                systemctl enable firewalld
+                systemctl start firewalld
+                cp /root/ocp4-helpernode/tasks/main.yml /root/ocp4-helpernode/tasks/main.yml.bak
+                sed -i '/Best effort SELinux repair - DNS/,+4d' tasks/main.yml
+                sed -i '/SEBool allow haproxy connect any port/,+6d' tasks/main.yml
+                ansible-playbook -e @vars.yaml tasks/main.yml
+                cd /root
+                cat > $clusterid-config.yaml << "ENDFILE"
+                ApiVersion: v1
+                baseDomain: $domain_name
+                metadata:
+                  name: $clusterid
+                controlPlane:
+                  name: master
+                  hyperthreading: Enabled
+                  replicas: 3
+                compute:
+                - name: worker
+                  hyperthreading: Enabled
+                  replicas: $numworkers
+                networking:
+                  clusterNetworks:
+                  - cidr: 10.128.0.0/14
+                    hostPrefix: 23
+                    networkType: OpenShiftSDN
+                  serviceNetwork:
+                  - 172.30.0.0/16
+                platform:
+                  none: {}
+                pullSecret: '$secret'
+                sshKey: '$public_ssh_key'
+                ENDFILE
+
+                mkdir /var/www/html/ignition/$clusterid/
+                cp $clusterid-config.yaml /var/www/html/ignition/$clusterid/install-config.yaml
+                openshift-install create --dir /var/www/html/ignition/$clusterid/ ignition-configs
+                chmod 755 /var/www/html/ignition/$clusterid/*.ign
+                
+                echo "export KUBECONFIG=/var/www/html/ignition/"$clusterid"/auth/kubeconfig" >> /root/.bashrc
+                echo -e "export KUBECONFIG=/var/www/html/ignition/"$clusterid"/auth/kubeconfig" >  /usr/local/bin/node-approve-csr.sh
+                echo -e "numcsr=\`/usr/local/bin/oc get csr | grep node | grep Pending | wc -l\`" >> /usr/local/bin/node-approve-csr.sh
+                echo -e "if [ \$numcsr -gt 0 ]; then "  >> /usr/local/bin/node-approve-csr.sh
+                echo -e "  /usr/local/bin/oc get csr | grep node | grep Pending | awk '{print \$1}' | xargs /usr/local/bin/oc adm certificate approve" >> /usr/local/bin/node-approve-csr.sh
+                echo -e "fi" >> /usr/local/bin/node-approve-csr.sh
+                chmod 755 /usr/local/bin/node-approve-csr.sh
+                set -e
+                (crontab -l 2>/dev/null || true; echo "*/5 * * * * /usr/local/bin/node-approve-csr.sh") | crontab -
+                
+                wc_notify --insecure --data-binary '{"status": "SUCCESS"}'
+
+   wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: {get_resource: wait_handle}
+      timeout: 1200
+
+   wait_handle:
+      type: OS::Heat::WaitConditionHandle
+
+   bootstrap:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'bootstrap']]
+      image: { get_param: coreos_image }
+      flavor: "m1.large"
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_bootstrap_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "bootstrap"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   master0:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master0']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: master_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_master0_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "master"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   master1:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master1']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: master_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_master1_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "master"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   master2:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'master2']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: master_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_master2_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "master"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker0:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker0']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker0_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker1:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker1']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker1_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker2:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker2']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker2_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker3:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    condition: workers_num4
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker3']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker3_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker4:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    condition: workers_num5
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker4']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker4_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
+
+   worker5:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    condition: workers_num6
+    properties:
+      name:
+        list_join: ['-', [ {get_param: cluster_name}, 'worker5']]
+      image: { get_param: coreos_image }
+      flavor: {get_param: worker_flavor}
+      availability_zone: { get_param: availability_zone }
+      networks:
+        - port: { get_resource: ocp_worker5_port }
+      config_drive: 'True'
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            $public_ssh_key: {get_param: public_key}
+            $clusterid: {get_param: cluster_name}
+            $infra_ip: {get_param: infrastructure_node_ip}
+            $noderole: "worker"
+          template: |
+             {"ignition":{"config":{"append":[{"source":"http://$infra_ip:8080/ignition/$clusterid/$noderole.ign"}]},"timeouts":{},"version":"2.1.0"},"networkd":{},"passwd":{"users":[{"name":"core","sshAuthorizedKeys":["$public_ssh_key"]}]},"storage":{},"systemd":{"units":[{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"name":"coreos-metadata.service"},{"dropins":[{"contents":"[Service]\nEnvironment=COREOS_METADATA_OPT_PROVIDER=--provider=openstack-metadata","name":"20-clct-provider-override.conf"}],"enabled":true,"name":"coreos-metadata-sshkeys@.service"},{"dropins":[{"contents":"[Unit]\nRequires=coreos-metadata.service\nAfter=coreos-metadata.service\n\n[Service]\nEnvironmentFile=/run/metadata/coreos\nExecStart=\nExecStart=/usr/lib/coreos/etcd-wrapper$ETCD_OPTS\\\n--listen-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--listen-client-urls=\"http://0.0.0.0:2379\"\\\n--initial-advertise-peer-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2380\"\\\n--advertise-client-urls=\"http://${COREOS_OPENSTACK_IPV4_LOCAL}:2379\"\\\n--discovery=\"https://discovery.etcd.io/\u003ctoken\u003e\"","name":"20-clct-etcd-member.conf"}],"enable":true,"name":"etcd-member.service"}]}}
