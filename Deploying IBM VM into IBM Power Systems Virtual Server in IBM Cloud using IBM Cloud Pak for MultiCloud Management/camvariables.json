@@ -59,20 +59,6 @@
       "immutable_after_create": false
     },
     {
-      "name": "ibmcloud_zone",
-      "label": "IBM Cloud Zone (e.g., us-south or  eu-de-1)",
-      "description": "Indicate the zone within the region to connect to (only needed for multi-zone regions--e.g., eu-de-1)",
-      "type": "string",
-      "default": "us-east",
-      "regex": "",
-      "group_name": "cloud",
-      "required": true,
-      "secured": false,
-      "hidden": false,
-      "immutable": false,
-      "immutable_after_create": false
-    },
-    {
       "name": "power_instance_id",
       "label": "Power Virtual Server Instance ID",
       "description": "Power Virtual Server instance ID associated with your IBM Cloud account (note that this is NOT the API key)",
