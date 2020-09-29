@@ -8,11 +8,6 @@ variable "ibmcloud_region" {
   default     = "us-east"
 }
 
-variable "ibmcloud_zone" {
-  description = "Indicate the zone within the region to connect to (only needed for multi-zone regions--e.g., eu-de-1)"
-  default     = "us-east"
-}
-
 variable "power_instance_id" {
   description = "Power Virtual Server instance ID associated with your IBM Cloud account (note that this is NOT the API key)"
   default     = "30295a9a-9ffa-4b5b-8b7d-efa06f3d38a7"
