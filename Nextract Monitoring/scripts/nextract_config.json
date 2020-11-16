@@ -1,0 +1,10 @@
+{
+"hostname": "hmc42",
+"user": "pcmadmin",
+"password": "SECRET1",
+"ihost": "influxdb.server.acme.com",
+"iport": 8086,
+"iuser": "admin",
+"ipassword": "SECRET2",
+"idbname": "nextract"
+}
