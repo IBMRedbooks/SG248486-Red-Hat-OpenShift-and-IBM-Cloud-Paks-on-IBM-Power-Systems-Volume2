@@ -1,5 +1,5 @@
 # Deploying IBM VM into IBM Power Systems Virtual Server in IBM Cloud using IBM Cloud Pak for Multicloud Management
-#IBM Power Systems clients who have typically relied upon on-premise private cloud solution
+IBM Power Systems clients who have typically relied upon on-premise private cloud solution
 includes IBM PowerVC that provides the infrastructure-as-a-service (IaaS) layer. Now can quickly and economically extend their IT resources onto IBM Power Systems Virtual Servers.
 
 IBM Power Systems Virtual Servers on IBM Cloud integrates AIX and IBM i capabilities into the IBM Cloud experience. Users receive fast, self-service provisioning, flexible management and access to a stack of enterprise IBM Cloud services - all with easy Pay-As-you-use billing
