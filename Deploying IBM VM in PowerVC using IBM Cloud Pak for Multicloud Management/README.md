@@ -1,5 +1,6 @@
 # Deploying IBM VM into IBM PowerVC using IBM Cloud Pak for Multicloud Management
-IBM Cloud Pak for Multicloud Management runs on Red Hat OpenShift that provides consistent visibility governance, and automation from on-premise to the edge. 
-With it, you get more application and cluster visibility across the enterprise to public or private cloud. The CP4MCM includes the IBM Cloud Automation Manager 
-that automates provisioning of infrastructure and virtual machine applications across multiple cloud environments with optional workflow orchestration. 
-We describe how to deploy IBM i virtual machine by using IBM PowerVC that uses Terraform templates.
+IBM Cloud Pak for Multicloud Management runs on Red Hat OpenShift that provides consistent visibility governance, and automation from on-premise to the edge. With it, you get more application and cluster visibility across the enterprise to public or private cloud. The IBM Cloud Pak for Multicloud Management includes the IBM Cloud Automation Manager using HashiCorp Terraform as its underlying engine, CAM enables connectivity to numerous cloud infrastructures including PowerVC (OpenStack), IBM Cloud, AWS, Azure, Google and several others. CAM can provision virtual machines (including LPARs via IBM PowerVC) as well as containers - so users can create software catalog entries that build complex multitier applications with a single click.
+
+And because CAM is delivered as part of an IBM Cloud Pak, it inherently runs on Red Hat OpenShift, creating a centralized management plane from which you can deploy all your applications, regardless of what platform or technologies they use.
+
+We describe how to deploy IBM i virtual machine in IBM PowerVC by using IBM Cloud Pak for Multicloud Management that uses Terraform templates
