@@ -3,4 +3,4 @@ IBM Cloud Pak for Multicloud Management runs on Red Hat OpenShift that provides 
 
 And because CAM is delivered as part of an IBM Cloud Pak, it inherently runs on Red Hat OpenShift, creating a centralized management plane from which you can deploy all your applications, regardless of what platform or technologies they use.
 
-We describe how to deploy IBM i virtual machine in IBM PowerVC by using IBM Cloud Pak for Multicloud Management that uses Terraform templates
+We describe how to deploy IBM i virtual machine in IBM PowerVC by using IBM Cloud Pak for Multicloud Management that uses Terraform templates.
